@@ -13,28 +13,39 @@ export function GameProvider({ children }) {
   const [currentGame, setCurrentGame] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [stockfish, setStockfish] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const newSocket = io(API_URL, {
       withCredentials: true,
       transports: ['websocket'],
-      autoConnect: true
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
     });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
       console.log('Socket connected');
       setIsConnected(true);
+      setError(null);
     });
 
     newSocket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
       setIsConnected(false);
+      setError('Connection error. Please try again.');
     });
 
     newSocket.on('disconnect', () => {
       console.log('Socket disconnected');
       setIsConnected(false);
+    });
+
+    newSocket.on('error', (error) => {
+      console.error('Socket error:', error);
+      setError(error.message || 'An error occurred');
     });
 
     // Initialize Stockfish
@@ -58,6 +69,7 @@ export function GameProvider({ children }) {
 
   const createGame = async (gameOptions) => {
     try {
+      setError(null);
       const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('No authentication token found');
@@ -81,32 +93,57 @@ export function GameProvider({ children }) {
       setCurrentGame(response.data);
       if (socket && socket.connected) {
         socket.emit('join-game', response.data._id);
+      } else {
+        throw new Error('Socket connection not available');
       }
       return response.data;
     } catch (error) {
       console.error('Error creating game:', error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || 'Failed to create game. Please try again.');
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create game. Please try again.';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 
   const joinGame = async (gameId) => {
     try {
+      setError(null);
       const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
       const response = await axios.get(
         `${API_URL}/api/games/${gameId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
+      if (!response.data) {
+        throw new Error('No game data received from server');
+      }
+
       setCurrentGame(response.data);
-      socket.emit('join-game', gameId);
+      if (socket && socket.connected) {
+        socket.emit('join-game', gameId);
+      } else {
+        throw new Error('Socket connection not available');
+      }
       return response.data;
     } catch (error) {
       console.error('Error joining game:', error);
-      throw error;
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to join game. Please try again.';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 
   const makeMove = (from, to, piece) => {
-    if (currentGame && socket) {
+    if (!currentGame || !socket || !socket.connected) {
+      setError('Game connection not available');
+      return;
+    }
+
+    try {
       socket.emit('make-move', {
         gameId: currentGame._id,
         from,
@@ -118,22 +155,38 @@ export function GameProvider({ children }) {
       if (currentGame.isComputer && currentGame.currentTurn !== currentGame.playerColor) {
         calculateComputerMove();
       }
+    } catch (error) {
+      console.error('Error making move:', error);
+      setError('Failed to make move. Please try again.');
     }
   };
 
   const calculateComputerMove = () => {
-    if (!stockfish || !currentGame) return;
+    if (!stockfish || !currentGame) {
+      setError('Computer opponent not available');
+      return;
+    }
 
-    const fen = currentGame.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-    const depth = Math.min(currentGame.computerDifficulty, 20);
-    
-    stockfish.postMessage(`position fen ${fen}`);
-    stockfish.postMessage(`go depth ${depth}`);
+    try {
+      const fen = currentGame.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      const depth = Math.min(currentGame.computerDifficulty, 20);
+      
+      stockfish.postMessage(`position fen ${fen}`);
+      stockfish.postMessage(`go depth ${depth}`);
+    } catch (error) {
+      console.error('Error calculating computer move:', error);
+      setError('Failed to calculate computer move');
+    }
   };
 
   const updateGameStatus = async (gameId, status, result) => {
     try {
+      setError(null);
       const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
       const response = await axios.patch(
         `${API_URL}/api/games/${gameId}/status`,
         { status, result },
@@ -143,12 +196,14 @@ export function GameProvider({ children }) {
       return response.data;
     } catch (error) {
       console.error('Error updating game status:', error);
-      throw error;
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to update game status';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 
   const leaveGame = () => {
-    if (currentGame && socket) {
+    if (currentGame && socket && socket.connected) {
       socket.emit('leave-game', currentGame._id);
       setCurrentGame(null);
     }
@@ -160,6 +215,7 @@ export function GameProvider({ children }) {
         socket,
         currentGame,
         isConnected,
+        error,
         createGame,
         joinGame,
         makeMove,

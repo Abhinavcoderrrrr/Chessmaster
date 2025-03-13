@@ -46,17 +46,33 @@ export function GameProvider({ children }) {
   const createGame = async (gameOptions) => {
     try {
       const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
       const response = await axios.post(
         `${API_URL}/api/games`,
         gameOptions,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { 
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          } 
+        }
       );
+
+      if (!response.data) {
+        throw new Error('No game data received from server');
+      }
+
       setCurrentGame(response.data);
-      socket.emit('join-game', response.data._id);
+      if (socket && socket.connected) {
+        socket.emit('join-game', response.data._id);
+      }
       return response.data;
     } catch (error) {
-      console.error('Error creating game:', error);
-      throw error;
+      console.error('Error creating game:', error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || 'Failed to create game. Please try again.');
     }
   };
 

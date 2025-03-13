@@ -8,12 +8,17 @@ router.post('/', auth, async (req, res) => {
   try {
     const { timeControl, isComputer, computerDifficulty, playerColor } = req.body;
     
+    // Validate required fields
+    if (!timeControl) {
+      return res.status(400).json({ message: 'Time control is required' });
+    }
+
     let game;
     if (isComputer) {
       // For computer games, create a new game immediately
       game = new Game({
         timeControl,
-        isComputer,
+        isComputer: true,
         computerDifficulty: computerDifficulty || 5,
         playerColor: playerColor || 'w',
         whitePlayer: playerColor === 'w' ? req.user._id : null,
@@ -41,10 +46,23 @@ router.post('/', auth, async (req, res) => {
     }
 
     await game.save();
-    res.json(game);
+    
+    // Populate player information
+    await game.populate([
+      { path: 'whitePlayer', select: 'username rating' },
+      { path: 'blackPlayer', select: 'username rating' }
+    ]);
+
+    res.status(201).json(game);
   } catch (error) {
     console.error('Error creating game:', error);
-    res.status(500).json({ message: 'Error creating game' });
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ 
+        message: 'Invalid game data',
+        errors: Object.values(error.errors).map(err => err.message)
+      });
+    }
+    res.status(500).json({ message: 'Error creating game. Please try again.' });
   }
 });
 

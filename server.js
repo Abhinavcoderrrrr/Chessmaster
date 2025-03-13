@@ -73,32 +73,57 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('join-game', (gameId) => {
-    socket.join(gameId);
-    if (!games.has(gameId)) {
-      games.set(gameId, {
-        players: [],
-        moves: [],
-        currentTurn: 'w',
-        isComputer: false,
-        computerDifficulty: 5,
-        playerColor: 'w'
-      });
-    }
-    const game = games.get(gameId);
-    if (!game.players.includes(socket.id)) {
-      game.players.push(socket.id);
-    }
-    socket.emit('game-state', game);
+    try {
+      if (!gameId) {
+        console.error('No game ID provided for join-game event');
+        return;
+      }
 
-    // Initialize Stockfish for computer games
-    if (game.isComputer && !stockfishInstances.has(gameId)) {
-      initializeStockfish(gameId);
+      socket.join(gameId);
+      if (!games.has(gameId)) {
+        games.set(gameId, {
+          players: [],
+          moves: [],
+          currentTurn: 'w',
+          isComputer: false,
+          computerDifficulty: 5,
+          playerColor: 'w'
+        });
+      }
+      const game = games.get(gameId);
+      if (!game.players.includes(socket.id)) {
+        game.players.push(socket.id);
+      }
+      socket.emit('game-state', game);
+
+      // Initialize Stockfish for computer games
+      if (game.isComputer && !stockfishInstances.has(gameId)) {
+        try {
+          initializeStockfish(gameId);
+        } catch (error) {
+          console.error('Error initializing Stockfish:', error);
+          socket.emit('error', { message: 'Failed to initialize computer opponent' });
+        }
+      }
+    } catch (error) {
+      console.error('Error in join-game handler:', error);
+      socket.emit('error', { message: 'Failed to join game' });
     }
   });
 
   socket.on('make-move', ({ gameId, from, to, piece }) => {
-    const game = games.get(gameId);
-    if (game) {
+    try {
+      if (!gameId || !from || !to) {
+        console.error('Invalid move data received');
+        return;
+      }
+
+      const game = games.get(gameId);
+      if (!game) {
+        console.error('Game not found:', gameId);
+        return;
+      }
+
       game.moves.push({ from, to, piece });
       game.currentTurn = game.currentTurn === 'w' ? 'b' : 'w';
       io.to(gameId).emit('move-made', { from, to, piece, currentTurn: game.currentTurn });
@@ -110,9 +135,19 @@ io.on('connection', (socket) => {
           const fen = generateFEN(game.moves);
           stockfish.stdin.write(`position fen ${fen}\n`);
           stockfish.stdin.write(`go depth ${game.computerDifficulty}\n`);
+        } else {
+          console.error('Stockfish instance not found for game:', gameId);
         }
       }
+    } catch (error) {
+      console.error('Error in make-move handler:', error);
+      socket.emit('error', { message: 'Failed to process move' });
     }
+  });
+
+  socket.on('error', (error) => {
+    console.error('Socket error:', error);
+    socket.emit('error', { message: 'An error occurred' });
   });
 
   socket.on('disconnect', () => {
@@ -120,8 +155,12 @@ io.on('connection', (socket) => {
     // Clean up Stockfish instances
     for (const [gameId, stockfish] of stockfishInstances.entries()) {
       if (games.get(gameId)?.players.includes(socket.id)) {
-        stockfish.kill();
-        stockfishInstances.delete(gameId);
+        try {
+          stockfish.kill();
+          stockfishInstances.delete(gameId);
+        } catch (error) {
+          console.error('Error cleaning up Stockfish instance:', error);
+        }
       }
     }
   });

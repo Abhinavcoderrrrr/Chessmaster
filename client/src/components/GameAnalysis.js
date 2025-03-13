@@ -10,7 +10,8 @@ import {
   Tooltip,
   Grid,
 } from '@chakra-ui/react';
-import { ChevronLeftIcon, ChevronRightIcon, PlayIcon, PauseIcon } from '@chakra-ui/icons';
+import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from '@chakra-ui/icons';
+import { FaPause } from 'react-icons/fa';
 import { Chess } from 'chess.js';
 import ChessBoard from './ChessBoard';
 
@@ -114,7 +115,7 @@ function GameAnalysis({ moves, initialFen }) {
             </Tooltip>
             <Tooltip label={isPlaying ? "Pause" : "Play"}>
               <IconButton
-                icon={isPlaying ? <PauseIcon /> : <PlayIcon />}
+                icon={isPlaying ? <FaPause /> : <PlayIcon />}
                 onClick={handlePlayPause}
               />
             </Tooltip>

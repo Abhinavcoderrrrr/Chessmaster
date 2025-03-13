@@ -15,14 +15,25 @@ export function GameProvider({ children }) {
   const [stockfish, setStockfish] = useState(null);
 
   useEffect(() => {
-    const newSocket = io(API_URL);
+    const newSocket = io(API_URL, {
+      withCredentials: true,
+      transports: ['websocket'],
+      autoConnect: true
+    });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
+      console.log('Socket connected');
       setIsConnected(true);
     });
 
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setIsConnected(false);
+    });
+
     newSocket.on('disconnect', () => {
+      console.log('Socket disconnected');
       setIsConnected(false);
     });
 
@@ -36,7 +47,9 @@ export function GameProvider({ children }) {
     }
 
     return () => {
-      newSocket.close();
+      if (newSocket) {
+        newSocket.close();
+      }
       if (stockfish) {
         stockfish.terminate();
       }

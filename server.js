@@ -16,10 +16,10 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? 'https://chessmaster-lkd8.onrender.com' 
-      : 'http://localhost:3000',
-    methods: ['GET', 'POST']
+    origin: ['https://chessmaster-lkd8.onrender.com', 'http://localhost:3000'],
+    methods: ['GET', 'POST'],
+    credentials: true,
+    allowedHeaders: ['Authorization', 'Content-Type']
   }
 });
 
@@ -42,12 +42,17 @@ app.use('/api/users', userRoutes);
 app.use('/api/games', gameRoutes);
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/chess-game', {
+mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
 })
 .then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
+.catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1); // Exit if cannot connect to database
+});
 
 const games = new Map();
 const stockfishInstances = new Map();

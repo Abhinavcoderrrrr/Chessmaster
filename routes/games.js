@@ -1,55 +1,74 @@
 const express = require('express');
 const router = express.Router();
 const Game = require('../models/Game');
-const User = require('../models/User');
 const auth = require('../middleware/auth');
 
 // Create a new game
 router.post('/', auth, async (req, res) => {
   try {
-    const { timeControl } = req.body;
-    const user = await User.findById(req.user.userId);
+    const { timeControl, isComputer, computerDifficulty, playerColor } = req.body;
     
-    // Find an opponent with similar rating
-    const opponent = await User.findOne({
-      _id: { $ne: user._id },
-      rating: { $gte: user.rating - 200, $lte: user.rating + 200 },
-    });
+    let game;
+    if (isComputer) {
+      // For computer games, create a new game immediately
+      game = new Game({
+        timeControl,
+        isComputer,
+        computerDifficulty: computerDifficulty || 5,
+        playerColor: playerColor || 'w',
+        whitePlayer: playerColor === 'w' ? req.user._id : null,
+        blackPlayer: playerColor === 'b' ? req.user._id : null,
+        status: 'active'
+      });
+    } else {
+      // For online games, try to find an opponent
+      game = await Game.findOne({
+        status: 'waiting',
+        timeControl,
+        whitePlayer: { $ne: req.user._id }
+      });
 
-    if (!opponent) {
-      return res.status(404).json({ message: 'No suitable opponent found' });
+      if (!game) {
+        game = new Game({
+          timeControl,
+          whitePlayer: req.user._id,
+          status: 'waiting'
+        });
+      } else {
+        game.blackPlayer = req.user._id;
+        game.status = 'active';
+      }
     }
 
-    // Randomly assign colors
-    const isWhite = Math.random() < 0.5;
-    const game = new Game({
-      white: isWhite ? user._id : opponent._id,
-      black: isWhite ? opponent._id : user._id,
-      timeControl,
-    });
-
     await game.save();
-
-    res.status(201).json(game);
+    res.json(game);
   } catch (error) {
-    res.status(500).json({ message: 'Error creating game', error: error.message });
+    console.error('Error creating game:', error);
+    res.status(500).json({ message: 'Error creating game' });
   }
 });
 
-// Get game by ID
+// Get game details
 router.get('/:id', auth, async (req, res) => {
   try {
     const game = await Game.findById(req.params.id)
-      .populate('white', 'username rating')
-      .populate('black', 'username rating');
+      .populate('whitePlayer', 'username rating')
+      .populate('blackPlayer', 'username rating');
 
     if (!game) {
       return res.status(404).json({ message: 'Game not found' });
     }
 
+    // Check if user is part of the game
+    if (game.whitePlayer?._id.toString() !== req.user._id.toString() &&
+        game.blackPlayer?._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to view this game' });
+    }
+
     res.json(game);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching game', error: error.message });
+    console.error('Error fetching game:', error);
+    res.status(500).json({ message: 'Error fetching game' });
   }
 });
 
@@ -64,64 +83,41 @@ router.patch('/:id/status', auth, async (req, res) => {
     }
 
     // Check if user is part of the game
-    if (!game.white.equals(req.user.userId) && !game.black.equals(req.user.userId)) {
+    if (game.whitePlayer?.toString() !== req.user._id.toString() &&
+        game.blackPlayer?.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Not authorized to update this game' });
     }
 
     game.status = status;
-    game.result = result;
-    game.endTime = new Date();
-
-    if (status === 'completed' && result) {
-      // Calculate rating changes using ELO system
-      const whitePlayer = await User.findById(game.white);
-      const blackPlayer = await User.findById(game.black);
-      
-      const K = 32; // ELO K-factor
-      const expectedWhite = 1 / (1 + Math.pow(10, (blackPlayer.rating - whitePlayer.rating) / 400));
-      const expectedBlack = 1 - expectedWhite;
-
-      if (result === 'white') {
-        game.ratingChanges = {
-          white: Math.round(K * (1 - expectedWhite)),
-          black: Math.round(K * (0 - expectedBlack)),
-        };
-      } else if (result === 'black') {
-        game.ratingChanges = {
-          white: Math.round(K * (0 - expectedWhite)),
-          black: Math.round(K * (1 - expectedBlack)),
-        };
-      } else {
-        game.ratingChanges = {
-          white: Math.round(K * (0.5 - expectedWhite)),
-          black: Math.round(K * (0.5 - expectedBlack)),
-        };
-      }
-
-      // Update player statistics
-      await game.updatePlayerStats();
+    if (result) {
+      game.result = result;
     }
 
     await game.save();
     res.json(game);
   } catch (error) {
-    res.status(500).json({ message: 'Error updating game', error: error.message });
+    console.error('Error updating game status:', error);
+    res.status(500).json({ message: 'Error updating game status' });
   }
 });
 
-// Get active games for a user
+// Get active games for user
 router.get('/user/active', auth, async (req, res) => {
   try {
     const games = await Game.find({
-      $or: [{ white: req.user.userId }, { black: req.user.userId }],
-      status: 'active',
+      $or: [
+        { whitePlayer: req.user._id },
+        { blackPlayer: req.user._id }
+      ],
+      status: 'active'
     })
-      .populate('white', 'username rating')
-      .populate('black', 'username rating');
+    .populate('whitePlayer', 'username rating')
+    .populate('blackPlayer', 'username rating');
 
     res.json(games);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching active games', error: error.message });
+    console.error('Error fetching active games:', error);
+    res.status(500).json({ message: 'Error fetching active games' });
   }
 });
 

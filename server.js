@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
+const { spawn } = require('child_process');
 require('dotenv').config();
 
 // Import routes
@@ -16,7 +17,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
-      ? 'https://chess-by-ai.onrender.com' 
+      ? 'https://chessmaster-lkd8.onrender.com' 
       : 'http://localhost:3000',
     methods: ['GET', 'POST']
   }
@@ -49,6 +50,24 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/chess-gam
 .catch(err => console.error('MongoDB connection error:', err));
 
 const games = new Map();
+const stockfishInstances = new Map();
+
+const initializeStockfish = (gameId) => {
+  const stockfish = spawn('stockfish');
+  stockfishInstances.set(gameId, stockfish);
+
+  stockfish.stdout.on('data', (data) => {
+    const output = data.toString();
+    if (output.includes('bestmove')) {
+      const move = output.split('bestmove ')[1].split(' ')[0];
+      io.to(gameId).emit('computer-move', { move });
+    }
+  });
+
+  stockfish.stdin.write('uci\n');
+  stockfish.stdin.write('setoption name MultiPV value 1\n');
+  stockfish.stdin.write('isready\n');
+};
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -59,7 +78,10 @@ io.on('connection', (socket) => {
       games.set(gameId, {
         players: [],
         moves: [],
-        currentTurn: 'w'
+        currentTurn: 'w',
+        isComputer: false,
+        computerDifficulty: 5,
+        playerColor: 'w'
       });
     }
     const game = games.get(gameId);
@@ -67,21 +89,49 @@ io.on('connection', (socket) => {
       game.players.push(socket.id);
     }
     socket.emit('game-state', game);
+
+    // Initialize Stockfish for computer games
+    if (game.isComputer && !stockfishInstances.has(gameId)) {
+      initializeStockfish(gameId);
+    }
   });
 
-  socket.on('make-move', ({ gameId, from, to }) => {
+  socket.on('make-move', ({ gameId, from, to, piece }) => {
     const game = games.get(gameId);
     if (game) {
-      game.moves.push({ from, to });
+      game.moves.push({ from, to, piece });
       game.currentTurn = game.currentTurn === 'w' ? 'b' : 'w';
-      io.to(gameId).emit('move-made', { from, to, currentTurn: game.currentTurn });
+      io.to(gameId).emit('move-made', { from, to, piece, currentTurn: game.currentTurn });
+
+      // If it's a computer game and it's the computer's turn, calculate the move
+      if (game.isComputer && game.currentTurn !== game.playerColor) {
+        const stockfish = stockfishInstances.get(gameId);
+        if (stockfish) {
+          const fen = generateFEN(game.moves);
+          stockfish.stdin.write(`position fen ${fen}\n`);
+          stockfish.stdin.write(`go depth ${game.computerDifficulty}\n`);
+        }
+      }
     }
   });
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+    // Clean up Stockfish instances
+    for (const [gameId, stockfish] of stockfishInstances.entries()) {
+      if (games.get(gameId)?.players.includes(socket.id)) {
+        stockfish.kill();
+        stockfishInstances.delete(gameId);
+      }
+    }
   });
 });
+
+const generateFEN = (moves) => {
+  // This is a simplified FEN generation
+  // In a real implementation, you would need to properly track the board state
+  return 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+};
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

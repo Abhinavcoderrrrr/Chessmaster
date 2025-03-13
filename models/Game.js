@@ -1,30 +1,27 @@
 const mongoose = require('mongoose');
 
 const gameSchema = new mongoose.Schema({
-  white: {
+  whitePlayer: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    ref: 'User'
   },
-  black: {
+  blackPlayer: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'User'
+  },
+  timeControl: {
+    type: String,
     required: true
   },
   status: {
     type: String,
-    enum: ['active', 'completed', 'abandoned'],
-    default: 'active'
+    enum: ['waiting', 'active', 'completed', 'abandoned'],
+    default: 'waiting'
   },
   result: {
     type: String,
     enum: ['white', 'black', 'draw'],
     default: null
-  },
-  timeControl: {
-    type: String,
-    required: true,
-    default: '10+0'
   },
   moves: [{
     from: String,
@@ -35,13 +32,27 @@ const gameSchema = new mongoose.Schema({
       default: Date.now
     }
   }],
+  isComputer: {
+    type: Boolean,
+    default: false
+  },
+  computerDifficulty: {
+    type: Number,
+    min: 1,
+    max: 10,
+    default: 5
+  },
+  playerColor: {
+    type: String,
+    enum: ['w', 'b', 'random'],
+    default: 'w'
+  },
   startTime: {
     type: Date,
     default: Date.now
   },
   endTime: {
-    type: Date,
-    default: null
+    type: Date
   },
   ratingChanges: {
     white: {
@@ -55,12 +66,17 @@ const gameSchema = new mongoose.Schema({
   }
 });
 
+// Add indexes for better query performance
+gameSchema.index({ whitePlayer: 1, status: 1 });
+gameSchema.index({ blackPlayer: 1, status: 1 });
+gameSchema.index({ status: 1, timeControl: 1 });
+
 // Method to update player statistics when game is completed
 gameSchema.methods.updatePlayerStats = async function() {
   const User = mongoose.model('User');
   
   // Update white player stats
-  await User.findByIdAndUpdate(this.white, {
+  await User.findByIdAndUpdate(this.whitePlayer, {
     $inc: {
       'stats.gamesPlayed': 1,
       'stats.wins': this.result === 'white' ? 1 : 0,
@@ -71,7 +87,7 @@ gameSchema.methods.updatePlayerStats = async function() {
   });
 
   // Update black player stats
-  await User.findByIdAndUpdate(this.black, {
+  await User.findByIdAndUpdate(this.blackPlayer, {
     $inc: {
       'stats.gamesPlayed': 1,
       'stats.wins': this.result === 'black' ? 1 : 0,

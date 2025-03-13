@@ -2,15 +2,20 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import axios from 'axios';
 
+const API_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://chessmaster-lkd8.onrender.com'
+  : 'http://localhost:5000';
+
 const GameContext = createContext();
 
 export function GameProvider({ children }) {
   const [socket, setSocket] = useState(null);
   const [currentGame, setCurrentGame] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [stockfish, setStockfish] = useState(null);
 
   useEffect(() => {
-    const newSocket = io('http://localhost:5000');
+    const newSocket = io(API_URL);
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
@@ -21,15 +26,29 @@ export function GameProvider({ children }) {
       setIsConnected(false);
     });
 
-    return () => newSocket.close();
+    // Initialize Stockfish
+    if (typeof window !== 'undefined' && window.Stockfish) {
+      const engine = new window.Stockfish();
+      engine.onmessage = (event) => {
+        console.log('Stockfish:', event);
+      };
+      setStockfish(engine);
+    }
+
+    return () => {
+      newSocket.close();
+      if (stockfish) {
+        stockfish.terminate();
+      }
+    };
   }, []);
 
-  const createGame = async (timeControl) => {
+  const createGame = async (gameOptions) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.post(
-        'http://localhost:5000/api/games',
-        { timeControl },
+        `${API_URL}/api/games`,
+        gameOptions,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setCurrentGame(response.data);
@@ -45,7 +64,7 @@ export function GameProvider({ children }) {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(
-        `http://localhost:5000/api/games/${gameId}`,
+        `${API_URL}/api/games/${gameId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setCurrentGame(response.data);
@@ -65,14 +84,29 @@ export function GameProvider({ children }) {
         to,
         piece
       });
+
+      // If it's a computer game and it's the computer's turn, calculate and make the move
+      if (currentGame.isComputer && currentGame.currentTurn !== currentGame.playerColor) {
+        calculateComputerMove();
+      }
     }
+  };
+
+  const calculateComputerMove = () => {
+    if (!stockfish || !currentGame) return;
+
+    const fen = currentGame.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const depth = Math.min(currentGame.computerDifficulty, 20);
+    
+    stockfish.postMessage(`position fen ${fen}`);
+    stockfish.postMessage(`go depth ${depth}`);
   };
 
   const updateGameStatus = async (gameId, status, result) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.patch(
-        `http://localhost:5000/api/games/${gameId}/status`,
+        `${API_URL}/api/games/${gameId}/status`,
         { status, result },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -101,7 +135,8 @@ export function GameProvider({ children }) {
         joinGame,
         makeMove,
         updateGameStatus,
-        leaveGame
+        leaveGame,
+        stockfish
       }}
     >
       {children}

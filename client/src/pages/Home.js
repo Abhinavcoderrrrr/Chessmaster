@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Grid,
-  Heading,
-  Text,
   Button,
   VStack,
-  useColorModeValue,
-  useToast,
+  HStack,
+  Text,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -15,167 +12,127 @@ import {
   ModalBody,
   ModalCloseButton,
   useDisclosure,
-  FormControl,
-  FormLabel,
-  Select,
+  useToast,
 } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 import { useGame } from '../context/GameContext';
+import ComputerGameSettings from '../components/ComputerGameSettings';
 
-function Home() {
+const Home = () => {
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [gameMode, setGameMode] = useState(null);
   const navigate = useNavigate();
   const { createGame } = useGame();
   const toast = useToast();
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [selectedTimeControl, setSelectedTimeControl] = useState('10+0');
-  const [isCreatingGame, setIsCreatingGame] = useState(false);
 
-  const bgColor = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.700');
-
-  const timeControls = [
-    { value: '1+0', label: 'Bullet (1+0)' },
-    { value: '3+0', label: 'Blitz (3+0)' },
-    { value: '5+0', label: 'Blitz (5+0)' },
-    { value: '10+0', label: 'Rapid (10+0)' },
-    { value: '15+10', label: 'Rapid (15+10)' },
-    { value: '30+0', label: 'Classical (30+0)' },
-  ];
-
-  const handleCreateGame = async () => {
-    setIsCreatingGame(true);
+  const handleCreateGame = async (timeControl) => {
     try {
-      const game = await createGame(selectedTimeControl);
+      const game = await createGame({ timeControl });
       navigate(`/game/${game._id}`);
     } catch (error) {
       toast({
-        title: 'Error creating game',
-        description: error.message,
+        title: 'Error',
+        description: 'Failed to create game. Please try again.',
         status: 'error',
         duration: 3000,
         isClosable: true,
       });
-    } finally {
-      setIsCreatingGame(false);
-      onClose();
     }
   };
 
-  const gameModes = [
-    {
-      title: 'Quick Match',
-      description: 'Find a random opponent for a quick game',
-      timeControl: '10+0',
-      onClick: () => {
-        setSelectedTimeControl('10+0');
-        onOpen();
-      },
-    },
-    {
-      title: 'Rapid',
-      description: 'Classic rapid chess with 15+10 time control',
-      timeControl: '15+10',
-      onClick: () => {
-        setSelectedTimeControl('15+10');
-        onOpen();
-      },
-    },
-    {
-      title: 'Blitz',
-      description: 'Fast-paced blitz chess with 5+0 time control',
-      timeControl: '5+0',
-      onClick: () => {
-        setSelectedTimeControl('5+0');
-        onOpen();
-      },
-    },
-  ];
+  const renderGameModeContent = () => {
+    switch (gameMode) {
+      case 'computer':
+        return <ComputerGameSettings />;
+      case 'online':
+        return (
+          <VStack spacing={4}>
+            <Button
+              colorScheme="blue"
+              onClick={() => handleCreateGame('10+0')}
+              width="full"
+            >
+              Quick Match (10+0)
+            </Button>
+            <Button
+              colorScheme="blue"
+              onClick={() => handleCreateGame('15+10')}
+              width="full"
+            >
+              Rapid (15+10)
+            </Button>
+            <Button
+              colorScheme="blue"
+              onClick={() => handleCreateGame('5+0')}
+              width="full"
+            >
+              Blitz (5+0)
+            </Button>
+          </VStack>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
-    <Box>
+    <Box p={8}>
       <VStack spacing={8} align="stretch">
-        <Box textAlign="center">
-          <Heading size="2xl" mb={4}>
-            Welcome to ChessByAI
-          </Heading>
-          <Text fontSize="xl" color="gray.600">
-            Play chess against players from around the world
-          </Text>
-        </Box>
+        <Text fontSize="4xl" fontWeight="bold" textAlign="center">
+          Welcome to Chess Master
+        </Text>
 
-        <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={6}>
-          {gameModes.map((mode) => (
-            <Box
-              key={mode.title}
-              p={6}
-              bg={bgColor}
-              borderRadius="lg"
-              border="1px"
-              borderColor={borderColor}
-              _hover={{ transform: 'translateY(-4px)', shadow: 'lg' }}
-              transition="all 0.2s"
-            >
-              <VStack spacing={4} align="stretch">
-                <Heading size="md">{mode.title}</Heading>
-                <Text color="gray.600">{mode.description}</Text>
-                <Text fontWeight="bold">Time Control: {mode.timeControl}</Text>
-                <Button colorScheme="blue" onClick={mode.onClick}>
-                  Play Now
-                </Button>
-              </VStack>
-            </Box>
-          ))}
-        </Grid>
+        <HStack spacing={4} justify="center">
+          <Button
+            colorScheme="blue"
+            size="lg"
+            onClick={() => {
+              setGameMode('online');
+              onOpen();
+            }}
+          >
+            Play Online
+          </Button>
+          <Button
+            colorScheme="green"
+            size="lg"
+            onClick={() => {
+              setGameMode('computer');
+              onOpen();
+            }}
+          >
+            Play vs Computer
+          </Button>
+        </HStack>
 
-        <Box mt={8} p={6} bg={bgColor} borderRadius="lg" border="1px" borderColor={borderColor}>
-          <Heading size="md" mb={4}>
+        <Box p={6} borderWidth="1px" borderRadius="lg">
+          <Text fontSize="xl" fontWeight="bold" mb={4}>
             Features
-          </Heading>
-          <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
+          </Text>
+          <VStack align="start" spacing={2}>
             <Text>• Real-time multiplayer gameplay</Text>
+            <Text>• Play against computer with adjustable difficulty</Text>
             <Text>• Multiple time controls</Text>
-            <Text>• Player ratings and statistics</Text>
-            <Text>• Game history and analysis</Text>
-            <Text>• Beautiful and responsive UI</Text>
-            <Text>• Sound effects and animations</Text>
-          </Grid>
+            <Text>• Sound effects and visual feedback</Text>
+            <Text>• Game analysis and statistics</Text>
+          </VStack>
         </Box>
-      </VStack>
 
-      <Modal isOpen={isOpen} onClose={onClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Create New Game</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            <VStack spacing={4}>
-              <FormControl>
-                <FormLabel>Time Control</FormLabel>
-                <Select
-                  value={selectedTimeControl}
-                  onChange={(e) => setSelectedTimeControl(e.target.value)}
-                >
-                  {timeControls.map((control) => (
-                    <option key={control.value} value={control.value}>
-                      {control.label}
-                    </option>
-                  ))}
-                </Select>
-              </FormControl>
-              <Button
-                colorScheme="blue"
-                width="100%"
-                onClick={handleCreateGame}
-                isLoading={isCreatingGame}
-              >
-                Create Game
-              </Button>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+        <Modal isOpen={isOpen} onClose={onClose} size="xl">
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>
+              {gameMode === 'computer' ? 'Play vs Computer' : 'Create New Game'}
+            </ModalHeader>
+            <ModalCloseButton />
+            <ModalBody pb={6}>
+              {renderGameModeContent()}
+            </ModalBody>
+          </ModalContent>
+        </Modal>
+      </VStack>
     </Box>
   );
-}
+};
 
 export default Home; 

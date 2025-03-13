@@ -10,8 +10,7 @@ import {
   Tooltip,
   Grid,
 } from '@chakra-ui/react';
-import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from '@chakra-ui/icons';
-import { FaPause } from 'react-icons/fa';
+import { FaChevronLeft, FaChevronRight, FaPlay, FaPause } from 'react-icons/fa';
 import { Chess } from 'chess.js';
 import ChessBoard from './ChessBoard';
 
@@ -101,34 +100,34 @@ function GameAnalysis({ moves, initialFen }) {
           <HStack spacing={2} justify="center">
             <Tooltip label="First move">
               <IconButton
-                icon={<ChevronLeftIcon />}
+                icon={<FaChevronLeft />}
                 onClick={handleFirstMove}
                 isDisabled={currentMove === 0}
               />
             </Tooltip>
             <Tooltip label="Previous move">
               <IconButton
-                icon={<ChevronLeftIcon />}
+                icon={<FaChevronLeft />}
                 onClick={handlePreviousMove}
                 isDisabled={currentMove === 0}
               />
             </Tooltip>
             <Tooltip label={isPlaying ? "Pause" : "Play"}>
               <IconButton
-                icon={isPlaying ? <FaPause /> : <PlayIcon />}
+                icon={isPlaying ? <FaPause /> : <FaPlay />}
                 onClick={handlePlayPause}
               />
             </Tooltip>
             <Tooltip label="Next move">
               <IconButton
-                icon={<ChevronRightIcon />}
+                icon={<FaChevronRight />}
                 onClick={handleNextMove}
                 isDisabled={currentMove === moves.length - 1}
               />
             </Tooltip>
             <Tooltip label="Last move">
               <IconButton
-                icon={<ChevronRightIcon />}
+                icon={<FaChevronRight />}
                 onClick={handleLastMove}
                 isDisabled={currentMove === moves.length - 1}
               />

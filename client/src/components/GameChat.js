@@ -11,7 +11,7 @@ import {
   IconButton,
   Tooltip,
 } from '@chakra-ui/react';
-import { SendIcon } from '@chakra-ui/icons';
+import { FaPaperPlane } from 'react-icons/fa';
 
 function GameChat({ socket, gameId, username }) {
   const [messages, setMessages] = useState([]);
@@ -127,7 +127,7 @@ function GameChat({ socket, gameId, username }) {
             <Tooltip label="Send message">
               <IconButton
                 type="submit"
-                icon={<SendIcon />}
+                icon={<FaPaperPlane />}
                 colorScheme="blue"
                 size="sm"
                 isDisabled={!newMessage.trim()}
